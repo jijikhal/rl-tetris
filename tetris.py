@@ -122,7 +122,7 @@ class Tetris:
             lines_cleared = self.clear_lines()
             self.score += lines_cleared
 
-            reward = 10*lines_cleared - 2*self.count_holes() - 1.5*self.max_height()
+            reward = 10*lines_cleared + (100-self.count_holes())*0.01 + (20-self.max_height())*0.05
             return reward, False
 
         return 0, False
