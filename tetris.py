@@ -1,6 +1,7 @@
-from random import choice, randint, seed
+import random
 import cv2
 import numpy as np
+from numpy.typing import NDArray
 
 EMPTY = 0
 PIECE = 1
@@ -36,16 +37,18 @@ def rotate_ccw(piece: Piece) -> Piece:
     return new_p
 
 class Tetris:
-    def __init__(self):
+    def __init__(self, seed: int|None = None):
+        random.seed(seed)
         self.board = [[EMPTY for _ in range(10)] for _ in range(20)]
         self.score = 0
-        self.piece: Piece = choice(PIECES)
+        self.piece: Piece = random.choice(PIECES)
         self.pos: tuple[int, int] = (4, 0)
 
-    def reset(self):
+    def reset(self, seed: int|None = None):
+        random.seed(seed)
         self.board = [[EMPTY for _ in range(10)] for _ in range(20)]
         self.score = 0
-        self.piece = choice(PIECES)
+        self.piece = random.choice(PIECES)
         self.pos = (4, 0)
 
     def move(self, dir: tuple[int, int], piece: Piece) -> bool:
@@ -61,9 +64,9 @@ class Tetris:
         self.pos = (x_pos+dx, y_pos+dy)
         return True
     
-    def move_down(self) -> bool:
+    def move_down(self) -> bool|None:
         if self.move((0, 1), self.piece):
-            return True
+            return None
         
         x_pos, y_pos = self.pos
         for x, y in self.piece:
@@ -76,7 +79,7 @@ class Tetris:
                 self.board[ry][rx] = PIECE
 
         self.pos = (4, 0)
-        self.piece = choice(PIECES)
+        self.piece = random.choice(PIECES)
 
         return True
     
@@ -97,7 +100,7 @@ class Tetris:
             return 2*len(to_clear)-1
         return 0
 
-    def step(self, action: int) -> bool:
+    def step(self, action: int) -> tuple[float, bool]:
         if action == DO_NOTHING:
             pass
         elif action == MOVE_RIGHT:
@@ -109,10 +112,38 @@ class Tetris:
         elif action == ROTATE_CCW:
             self.move((0, 0), rotate_ccw(self.piece))
 
-        if not self.move_down():
-            return False
-        self.score += self.clear_lines()
-        return True
+
+        move_result = self.move_down()
+        if move_result == False:
+            # Game end
+            return 0, True
+        
+        if move_result == True:
+            lines_cleared = self.clear_lines()
+            self.score += lines_cleared
+
+            reward = 10*lines_cleared - 2*self.count_holes() - 1.5*self.max_height()
+            return reward, False
+
+        return 0, False
+
+    def max_height(self):
+        for i in range(len(self.board)):
+            if any(self.board[i]):
+                return 20-i
+        return 0
+    
+    def count_holes(self):
+        board = self.board
+        holes = 0
+        for col in range(len(board[0])):
+            block_found = False
+            for row in range(len(board)):
+                if board[row][col] == PIECE:
+                    block_found = True
+                elif block_found and board[row][col] == EMPTY:
+                    holes += 1  # Empty space under a block is a hole
+        return holes
 
     def draw(self):
         field = np.zeros((400, 200), dtype=np.uint8)
@@ -139,13 +170,27 @@ class Tetris:
         if (cv2.waitKey(10) == ord("q")):
             exit(0)
 
+    def get_observation(self) -> NDArray[np.uint8]:
+        obs = np.array(self.board, dtype=np.uint8)
+        x_pos, y_pos = self.pos
+        for x, y in self.piece:
+
+            row = y+y_pos
+            c = x+x_pos
+            if (row < 0):
+                continue
+            else:
+                obs[row, c] = MOVING
+        return obs
+
 
 if __name__ == "__main__":
-    seed(2)
+    random.seed(2)
     t = Tetris()
-    result = True
-    while(result):
+    ended = False
+    while(not ended):
         action = int(input())
         print(action)
-        result = t.step(action)
+        print(t.get_observation())
+        ended = t.step(action)
         t.draw()
